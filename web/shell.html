@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>余光未熄 - 网页版</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #08090f;
+      font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif;
+      overflow: hidden;
+    }
+    .page {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: min(100vw, calc(100vh * 1460 / 760));
+      height: min(100vh, calc(100vw * 760 / 1460));
+      background: #0e0f16;
+      outline: none;
+      object-fit: contain;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
+  </main>
+  <script>
+    var Module = {
+      canvas: document.getElementById("canvas"),
+      print: function(text) { console.log(text); },
+      printErr: function(text) { console.error(text); },
+      setStatus: function(text) { console.log(text || "已加载"); }
+    };
+    Module.canvas.addEventListener("click", function() {
+      Module.canvas.focus();
+    });
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>
