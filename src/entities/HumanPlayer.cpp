@@ -5,8 +5,24 @@
 #include <cmath>
 #include <utility>
 
-HumanPlayer::HumanPlayer(std::string label, GridPos pos, Color color)
-    : Character(std::move(label), pos, color) {}
+HumanPlayer::HumanPlayer(std::string label, HumanRole role, GridPos pos, Color color)
+    : Character(std::move(label), pos, color), role_(role) {}
+
+HumanRole HumanPlayer::Role() const {
+    return role_;
+}
+
+const char* HumanPlayer::RoleName() const {
+    switch (role_) {
+        case HumanRole::Keeper:
+            return "守灯人";
+        case HumanRole::Engineer:
+            return "工程师";
+        case HumanRole::Observer:
+            return "观测员";
+    }
+    return "人类";
+}
 
 bool HumanPlayer::InFlashlight(GridPos target) const {
     if (assimilated_ || RoomIndex(pos_) != RoomIndex(target)) {

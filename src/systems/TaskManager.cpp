@@ -26,10 +26,12 @@ const std::string& CoopTask::Objective() const {
 }
 
 TaskManager::TaskManager() {
-    tasks_.push_back({TaskId::ThreeLights, "三灯校准", "同时点亮并协作上层房间"});
-    tasks_.push_back({TaskId::DualGate, "双闸供能", "电闸房和镜光室同时协作"});
-    tasks_.push_back({TaskId::CoreEscort, "运送光核", "把光核从中庭光井送到封印大厅"});
-    tasks_.push_back({TaskId::FinalPurification, "最终净化", "所有存活人类在封印大厅协作"});
+    tasks_.push_back({TaskId::RekindleLamp, "重燃残灯", "守灯人恢复关键灯源"});
+    tasks_.push_back({TaskId::RepairGate, "维修机关门", "工程师打开机关门"});
+    tasks_.push_back({TaskId::GuardedGate, "护光开门", "守灯人护灯，工程师开门"});
+    tasks_.push_back({TaskId::CalibrateLamps, "灯源校准", "守灯人点灯，观测员识别目标"});
+    tasks_.push_back({TaskId::TraceShadow, "影迹追踪", "观测员找影迹，工程师开路线"});
+    tasks_.push_back({TaskId::FinalPurification, "最终净化", "三名人类各司其职完成封印"});
 }
 
 bool TaskManager::Complete(TaskId id) const {

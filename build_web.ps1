@@ -4,11 +4,15 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ToolsRoot = "C:\Users\Lenovo\Documents\dev-tools"
 $Emsdk = if ($env:EMSDK) {
     $env:EMSDK
+} elseif (Test-Path "C:\Users\15963\Desktop\emsdk\upstream\emscripten\emcc.exe") {
+    "C:\Users\15963\Desktop\emsdk"
 } else {
     Join-Path $ToolsRoot "emsdk"
 }
 $RaylibRoot = if ($env:RAYLIB_WEB_ROOT) {
     $env:RAYLIB_WEB_ROOT
+} elseif (Test-Path "C:\Users\15963\Desktop\raylib-5.5-web\src\libraylib.a") {
+    "C:\Users\15963\Desktop\raylib-5.5-web"
 } else {
     Join-Path $ToolsRoot "raylib-web-src-5.5"
 }

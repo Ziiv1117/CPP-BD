@@ -3,7 +3,14 @@
 #include <string>
 #include <vector>
 
-enum class TaskId { ThreeLights, DualGate, CoreEscort, FinalPurification };
+enum class TaskId {
+    RekindleLamp,
+    RepairGate,
+    GuardedGate,
+    CalibrateLamps,
+    TraceShadow,
+    FinalPurification
+};
 
 class CoopTask {
 public:

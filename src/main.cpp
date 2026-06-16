@@ -30,9 +30,14 @@ void RunFrame() {
 
 int main(int argc, char** argv) {
     bool smokeTest = false;
+    bool selfTest = false;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--smoke") {
             smokeTest = true;
+        }
+        if (std::string(argv[i]) == "--self-test") {
+            smokeTest = true;
+            selfTest = true;
         }
     }
     if (smokeTest) {
@@ -59,6 +64,20 @@ int main(int argc, char** argv) {
 
     Game game;
     gGame = &game;
+    if (selfTest) {
+        std::string error;
+        const bool ok = game.RunSecondVersionSelfTest(error);
+        if (!ok) {
+            TraceLog(LOG_ERROR, "Second version self test failed: %s", error.c_str());
+            UnloadChineseText();
+            CloseWindow();
+            return 1;
+        }
+        TraceLog(LOG_INFO, "Second version self test passed");
+        UnloadChineseText();
+        CloseWindow();
+        return 0;
+    }
     if (smokeTest) {
         BeginDrawing();
         game.Draw();

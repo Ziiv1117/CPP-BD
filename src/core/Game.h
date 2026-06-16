@@ -7,6 +7,7 @@
 #include "systems/TaskManager.h"
 #include "ui/UIManager.h"
 
+#include <string>
 #include <vector>
 
 enum class ScreenState { MainMenu, RoleSelect, Playing, Paused, Help, Result };
@@ -30,6 +31,7 @@ public:
     bool LitByAnyHuman(GridPos target) const;
     bool LitByAnyLight(GridPos target) const;
     bool GameOver() const;
+    bool RunSecondVersionSelfTest(std::string& error);
 
 private:
     void ResetRun();
@@ -47,16 +49,16 @@ private:
     int AssimilatedHumanCount() const;
     std::string ResultText() const;
     bool LampLitInRoom(int room) const;
-    bool HumanChannelingInRoom(int room) const;
-    int ChannelingHumanCountInRoom(int room) const;
-    int ChannelingLitRooms(const std::vector<int>& rooms) const;
-    bool AllMajorTasksComplete() const;
+    bool LampDamagedInRoom(int room) const;
+    LightSource* NearestLamp(GridPos pos);
+    const LightSource* NearestLamp(GridPos pos) const;
+    bool AllHumansInRoom(int room) const;
 
     void AdvanceTurn();
     void UpdateTaskProgress();
-    bool CanChannelCurrentObjective(const HumanPlayer& human) const;
-    void HandleChannel(HumanPlayer& human);
-    void HandleCore(HumanPlayer& human);
+    void HandleInteract(HumanPlayer& human);
+    void HandleRoleSkill(HumanPlayer& human);
+    void HandleShadowAction();
     void RescueNearby(int activeHuman);
     void ResolveAssimilation();
     void PushShadowFromLight();
@@ -83,8 +85,16 @@ private:
     int selectedHuman_ = 0;
     int turn_ = 1;
     float resolveTimer_ = 0.0f;
+    float observerRevealTimer_ = 0.0f;
     bool shadowVision_ = false;
     bool coreDelivered_ = false;
+    bool gateOpen_ = false;
+    bool guardedGateOpen_ = false;
+    bool lampCalibrated_ = false;
+    bool routeObserved_ = false;
+    bool routeOpened_ = false;
+    bool trueCoreIdentified_ = false;
+    bool sealDeviceStarted_ = false;
     EntryMode entryMode_ = EntryMode::LocalDemo;
     bool lightReady_ = false;
     bool shadowReady_ = false;

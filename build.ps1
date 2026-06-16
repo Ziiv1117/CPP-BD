@@ -7,6 +7,10 @@ $CondaMingwBin = "C:\Users\Lenovo\miniconda3\envs\ttff\Library\mingw-w64\bin"
 $Gxx = Join-Path $CondaMingwBin "g++.exe"
 $RaylibRoot = if ($env:RAYLIB_ROOT) {
     $env:RAYLIB_ROOT
+} elseif (Test-Path "D:\msys64\ucrt64\include\raylib.h") {
+    "D:\msys64\ucrt64"
+} elseif (Test-Path "C:\Users\15963\Desktop\raylib-5.5\src\raylib.h") {
+    "C:\Users\15963\Desktop\raylib-5.5\src"
 } else {
     "C:\Users\Lenovo\Documents\dev-tools\raylib-src-5.5\src"
 }
@@ -14,10 +18,21 @@ $RaylibRoot = if ($env:RAYLIB_ROOT) {
 if (!(Test-Path $Gxx)) {
     $Gxx = "g++"
 }
-if (!(Test-Path (Join-Path $RaylibRoot "raylib.h"))) {
+$RaylibInclude = if (Test-Path (Join-Path $RaylibRoot "include\raylib.h")) {
+    Join-Path $RaylibRoot "include"
+} else {
+    $RaylibRoot
+}
+$RaylibLibDir = if (Test-Path (Join-Path $RaylibRoot "lib\libraylib.a")) {
+    Join-Path $RaylibRoot "lib"
+} else {
+    $RaylibRoot
+}
+
+if (!(Test-Path (Join-Path $RaylibInclude "raylib.h"))) {
     throw "raylib.h not found. Set RAYLIB_ROOT or build raylib at $RaylibRoot"
 }
-if (!(Test-Path (Join-Path $RaylibRoot "libraylib.a"))) {
+if (!(Test-Path (Join-Path $RaylibLibDir "libraylib.a"))) {
     throw "libraylib.a not found. Build raylib first in $RaylibRoot"
 }
 
@@ -34,8 +49,8 @@ $Arguments = @(
 ) + $Sources + @(
     "-o", $Output,
     "-I", (Join-Path $Root "src"),
-    "-I", $RaylibRoot,
-    "-L", $RaylibRoot,
+    "-I", $RaylibInclude,
+    "-L", $RaylibLibDir,
     "-lraylib",
     "-lopengl32",
     "-lgdi32",

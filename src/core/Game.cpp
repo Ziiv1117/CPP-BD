@@ -2,6 +2,7 @@
 
 #include "core/Text.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -9,6 +10,14 @@ namespace {
 constexpr float kHumanMoveSpeed = 4.8f;
 constexpr float kShadowMoveSpeed = 5.6f;
 constexpr float kResolveInterval = 0.35f;
+constexpr float kShadowRevealDuration = 3.0f;
+constexpr float kKeeperStunDuration = 2.0f;
+
+constexpr GridPos kRepairPanel{8, 10};
+constexpr GridPos kFrontGatePanel{38, 10};
+constexpr GridPos kTracePanel{24, 10};
+constexpr GridPos kSealPanel{38, 10};
+constexpr GridPos kFinalCore{40, 10};
 
 Vector2 HeldDirection(int up, int down, int left, int right) {
     Vector2 dir{0.0f, 0.0f};
@@ -46,15 +55,23 @@ void Game::ResetRun() {
     selectedHuman_ = 0;
     turn_ = 1;
     resolveTimer_ = kResolveInterval;
+    observerRevealTimer_ = 0.0f;
     shadowVision_ = false;
     coreDelivered_ = false;
+    gateOpen_ = false;
+    guardedGateOpen_ = false;
+    lampCalibrated_ = false;
+    routeObserved_ = false;
+    routeOpened_ = false;
+    trueCoreIdentified_ = false;
+    sealDeviceStarted_ = false;
     toast_.clear();
     lightReady_ = false;
     shadowReady_ = false;
 
-    humans_.push_back({"人类1 守灯人", {3, 3}, Color{92, 192, 128, 255}});
-    humans_.push_back({"人类2 工程师", {6, 3}, Color{82, 154, 222, 255}});
-    humans_.push_back({"人类3 观测员", {9, 3}, Color{230, 184, 82, 255}});
+    humans_.push_back({"守灯人", HumanRole::Keeper, {3, 3}, Color{92, 192, 128, 255}});
+    humans_.push_back({"工程师", HumanRole::Engineer, {6, 3}, Color{82, 154, 222, 255}});
+    humans_.push_back({"观测员", HumanRole::Observer, {9, 3}, Color{230, 184, 82, 255}});
     for (int room = 0; room < 6; ++room) {
         lamps_.push_back({room, RoomCenter(room), room == 4});
     }
@@ -159,15 +176,19 @@ void Game::UpdateRoleSelect() {
 void Game::UpdatePlaying() {
     const float dt = GetFrameTime();
     resolveTimer_ -= dt;
+    if (observerRevealTimer_ > 0.0f) {
+        observerRevealTimer_ = std::max(0.0f, observerRevealTimer_ - dt);
+    }
+    shadow_.UpdateTimers(dt);
 
     if (IsKeyPressed(KEY_ESCAPE)) {
         screen_ = ScreenState::Paused;
         return;
     }
-    if (IsKeyPressed(KEY_Q)) {
+    if (IsKeyPressed(KEY_TAB)) {
         selectedHuman_ = (selectedHuman_ + static_cast<int>(humans_.size()) - 1) % static_cast<int>(humans_.size());
     }
-    if (IsKeyPressed(KEY_E)) {
+    if (IsKeyPressed(KEY_C)) {
         selectedHuman_ = (selectedHuman_ + 1) % static_cast<int>(humans_.size());
     }
     if (IsKeyPressed(KEY_V)) shadowVision_ = !shadowVision_;
@@ -184,16 +205,14 @@ void Game::UpdatePlaying() {
         shadow_.MoveContinuous(shadowDir, dt, kShadowMoveSpeed);
     }
 
-    if (IsKeyPressed(KEY_H)) {
-        for (auto& lamp : lamps_) {
-            lamp.TryActivate(human.Position());
-        }
+    if (IsKeyPressed(KEY_E)) {
+        HandleInteract(human);
         immediateAction = true;
-    } else if (IsKeyPressed(KEY_J)) {
-        HandleChannel(human);
+    } else if (IsKeyPressed(KEY_Q)) {
+        HandleRoleSkill(human);
         immediateAction = true;
-    } else if (IsKeyPressed(KEY_K)) {
-        HandleCore(human);
+    } else if (IsKeyPressed(KEY_R)) {
+        HandleShadowAction();
         immediateAction = true;
     } else if (IsKeyPressed(KEY_L)) {
         RescueNearby(selectedHuman_);
@@ -245,6 +264,65 @@ void Game::UpdateResult() {
     }
 }
 
+bool Game::RunSecondVersionSelfTest(std::string& error) {
+    auto require = [&](bool condition, const std::string& message) {
+        if (!condition && error.empty()) {
+            error = message;
+        }
+        return condition;
+    };
+
+    ResetRun();
+
+    humans_[0].SetPosition(RoomCenter(0));
+    HandleInteract(humans_[0]);
+    UpdateTaskProgress();
+    if (!require(tasks_.Complete(TaskId::RekindleLamp), "任务1重燃残灯未完成")) return false;
+
+    humans_[1].SetPosition(kRepairPanel);
+    HandleRoleSkill(humans_[1]);
+    UpdateTaskProgress();
+    if (!require(tasks_.Complete(TaskId::RepairGate), "任务2维修机关门未完成")) return false;
+
+    humans_[0].SetPosition(RoomCenter(5));
+    HandleInteract(humans_[0]);
+    humans_[1].SetPosition(kFrontGatePanel);
+    HandleRoleSkill(humans_[1]);
+    UpdateTaskProgress();
+    if (!require(tasks_.Complete(TaskId::GuardedGate), "任务3护光开门未完成")) return false;
+
+    humans_[2].SetPosition(RoomCenter(2));
+    HandleInteract(humans_[2]);
+    HandleRoleSkill(humans_[2]);
+    UpdateTaskProgress();
+    if (!require(tasks_.Complete(TaskId::CalibrateLamps), "任务4灯源校准未完成")) return false;
+
+    humans_[2].SetPosition(kTracePanel);
+    HandleRoleSkill(humans_[2]);
+    humans_[1].SetPosition(kTracePanel);
+    HandleRoleSkill(humans_[1]);
+    UpdateTaskProgress();
+    if (!require(tasks_.Complete(TaskId::TraceShadow), "任务5影迹追踪未完成")) return false;
+
+    humans_[2].SetPosition(kFinalCore);
+    HandleRoleSkill(humans_[2]);
+    humans_[1].SetPosition(kSealPanel);
+    HandleRoleSkill(humans_[1]);
+    for (auto& human : humans_) {
+        human.SetPosition(RoomCenter(5));
+    }
+    UpdateTaskProgress();
+    if (!require(tasks_.Complete(TaskId::FinalPurification), "任务6最终净化未完成")) return false;
+
+    shadow_.SetPosition(RoomCenter(5));
+    shadow_.Stun(kKeeperStunDuration);
+    shadow_.TeleportToRoom(0);
+    if (!require(RoomIndex(shadow_.Position()) == 5, "影眩晕时仍然可以传送")) return false;
+
+    error.clear();
+    return true;
+}
+
 void Game::UpdateVisuals(float dt) {
     for (auto& human : humans_) {
         human.UpdateVisual(dt);
@@ -283,7 +361,7 @@ void Game::Draw() {
 void Game::DrawGameScene() const {
     ClearBackground(Color{14, 15, 22, 255});
     DrawTextCN("《余光未熄》第二版单局演示", 36, 24, 24, Color{236, 230, 216, 255});
-    DrawTextCN("Q/E 切换人类 | WASD 移动人类 | H 点灯 | J 协作 | K 光核 | L 救援 | 方向键移动影 | 1-6/小键盘 影传送",
+    DrawTextCN("Tab/C 切换人类 | WASD 移动 | E 交互 | Q 职业技能 | L 救援 | R 影破坏灯源 | 方向键移动影 | 1-6 影传送",
                36, 52, 16, Color{210, 212, 224, 255});
 
     map_.DrawBase();
@@ -382,110 +460,179 @@ bool Game::LampLitInRoom(int room) const {
     return false;
 }
 
-bool Game::HumanChannelingInRoom(int room) const {
-    for (const auto& human : humans_) {
-        if (!human.IsAssimilated() && human.IsChanneling() && RoomIndex(human.Position()) == room) {
-            return true;
+bool Game::LampDamagedInRoom(int room) const {
+    for (const auto& lamp : lamps_) {
+        if (lamp.Room() == room) {
+            return lamp.IsDamaged();
         }
     }
     return false;
 }
 
-int Game::ChannelingHumanCountInRoom(int room) const {
-    int count = 0;
+LightSource* Game::NearestLamp(GridPos pos) {
+    LightSource* bestLamp = nullptr;
+    float bestDistance = 10000.0f;
+    for (auto& lamp : lamps_) {
+        const float d = Distance(pos, lamp.Position());
+        if (d <= 2.6f && d < bestDistance) {
+            bestDistance = d;
+            bestLamp = &lamp;
+        }
+    }
+    return bestLamp;
+}
+
+const LightSource* Game::NearestLamp(GridPos pos) const {
+    const LightSource* bestLamp = nullptr;
+    float bestDistance = 10000.0f;
+    for (const auto& lamp : lamps_) {
+        const float d = Distance(pos, lamp.Position());
+        if (d <= 2.6f && d < bestDistance) {
+            bestDistance = d;
+            bestLamp = &lamp;
+        }
+    }
+    return bestLamp;
+}
+
+bool Game::AllHumansInRoom(int room) const {
     for (const auto& human : humans_) {
-        if (!human.IsAssimilated() && human.IsChanneling() && RoomIndex(human.Position()) == room) {
-            ++count;
+        if (!human.IsAssimilated() && RoomIndex(human.Position()) != room) {
+            return false;
         }
     }
-    return count;
-}
-
-int Game::ChannelingLitRooms(const std::vector<int>& rooms) const {
-    int count = 0;
-    for (int room : rooms) {
-        if (HumanChannelingInRoom(room) && LampLitInRoom(room)) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-bool Game::AllMajorTasksComplete() const {
-    return tasks_.Complete(TaskId::ThreeLights) &&
-           tasks_.Complete(TaskId::DualGate) &&
-           tasks_.Complete(TaskId::CoreEscort);
+    return AliveHumanCount() > 0;
 }
 
 void Game::AdvanceTurn() {
     ++turn_;
     ResolveAssimilation();
     UpdateTaskProgress();
-    for (auto& human : humans_) {
-        if (human.IsCarryingCore()) {
-            corePos_ = human.Position();
-        }
-    }
 }
 
 void Game::UpdateTaskProgress() {
-    if (!tasks_.Complete(TaskId::ThreeLights) &&
-        ChannelingLitRooms({0, 1, 2}) >= AliveHumanCount()) {
-        tasks_.Mark(TaskId::ThreeLights);
+    if (!tasks_.Complete(TaskId::RekindleLamp) && LampLitInRoom(0)) {
+        tasks_.Mark(TaskId::RekindleLamp);
     }
-    if (tasks_.Complete(TaskId::ThreeLights) &&
-        !tasks_.Complete(TaskId::DualGate) &&
-        HumanChannelingInRoom(3) &&
-        HumanChannelingInRoom(2) &&
-        LampLitInRoom(3) &&
-        LampLitInRoom(2)) {
-        tasks_.Mark(TaskId::DualGate);
+    if (!tasks_.Complete(TaskId::RepairGate) && gateOpen_) {
+        tasks_.Mark(TaskId::RepairGate);
     }
-    if (coreDelivered_ && !tasks_.Complete(TaskId::CoreEscort)) {
-        tasks_.Mark(TaskId::CoreEscort);
+    if (!tasks_.Complete(TaskId::GuardedGate) && guardedGateOpen_) {
+        tasks_.Mark(TaskId::GuardedGate);
     }
-    if (AllMajorTasksComplete() &&
-        !tasks_.Complete(TaskId::FinalPurification) &&
-        ChannelingHumanCountInRoom(5) == AliveHumanCount() &&
-        LitByAnyHuman(RoomCenter(5))) {
+    if (!tasks_.Complete(TaskId::CalibrateLamps) && lampCalibrated_) {
+        tasks_.Mark(TaskId::CalibrateLamps);
+    }
+    if (!tasks_.Complete(TaskId::TraceShadow) && routeObserved_ && routeOpened_) {
+        tasks_.Mark(TaskId::TraceShadow);
+    }
+    const bool prerequisites = tasks_.Complete(TaskId::RekindleLamp) &&
+                               tasks_.Complete(TaskId::RepairGate) &&
+                               tasks_.Complete(TaskId::GuardedGate) &&
+                               tasks_.Complete(TaskId::CalibrateLamps) &&
+                               tasks_.Complete(TaskId::TraceShadow);
+    if (prerequisites && !tasks_.Complete(TaskId::FinalPurification) &&
+        LampLitInRoom(5) && trueCoreIdentified_ && sealDeviceStarted_ && AllHumansInRoom(5)) {
         tasks_.Mark(TaskId::FinalPurification);
     }
 }
 
-bool Game::CanChannelCurrentObjective(const HumanPlayer& human) const {
+void Game::HandleInteract(HumanPlayer& human) {
     if (human.IsAssimilated()) {
-        return false;
-    }
-    const int room = RoomIndex(human.Position());
-    if (!tasks_.Complete(TaskId::ThreeLights)) {
-        return (room == 0 || room == 1 || room == 2) && LampLitInRoom(room);
-    }
-    if (!tasks_.Complete(TaskId::DualGate)) {
-        return (room == 2 || room == 3) && LampLitInRoom(room);
-    }
-    if (AllMajorTasksComplete() && !tasks_.Complete(TaskId::FinalPurification)) {
-        return room == 5 && Distance(human.Position(), RoomCenter(5)) <= 5.0f;
-    }
-    return false;
-}
-
-void Game::HandleChannel(HumanPlayer& human) {
-    human.SetChanneling(CanChannelCurrentObjective(human));
-}
-
-void Game::HandleCore(HumanPlayer& human) {
-    if (!tasks_.Complete(TaskId::DualGate) || tasks_.Complete(TaskId::CoreEscort) || human.IsAssimilated()) {
+        toast_ = "该角色已被同化，无法交互";
         return;
     }
-    if (!human.IsCarryingCore() && !coreDelivered_ && Distance(human.Position(), corePos_) <= 2.0f) {
-        human.SetCarryingCore(true);
+    if (LightSource* lamp = NearestLamp(human.Position())) {
+        if (lamp->IsDamaged()) {
+            if (human.Role() == HumanRole::Keeper && lamp->TryRepair(human.Position())) {
+                toast_ = "守灯人修复了损坏灯源";
+            } else {
+                toast_ = "损坏灯源只有守灯人可以修复";
+            }
+            return;
+        }
+        if (!lamp->IsLit() && lamp->TryActivate(human.Position())) {
+            toast_ = "灯源已点亮，安全区扩大";
+            return;
+        }
+        toast_ = "附近灯源已经处于已点亮状态";
         return;
     }
-    if (human.IsCarryingCore() && RoomIndex(human.Position()) == 5 &&
-        Distance(human.Position(), RoomCenter(5)) <= 3.0f) {
-        human.SetCarryingCore(false);
-        coreDelivered_ = true;
+    RescueNearby(selectedHuman_);
+    toast_ = "附近没有灯源，已尝试救援队友";
+}
+
+void Game::HandleRoleSkill(HumanPlayer& human) {
+    if (human.IsAssimilated()) {
+        toast_ = "该角色已被同化，无法使用技能";
+        return;
     }
+    if (human.Role() == HumanRole::Keeper) {
+        if (human.InFlashlight(shadow_.Position()) || Distance(human.Position(), shadow_.Position()) <= 4.0f) {
+            shadow_.Stun(kKeeperStunDuration);
+            toast_ = "强光眩晕命中影，影短暂失去行动";
+        } else {
+            toast_ = "强光眩晕未命中影";
+        }
+        return;
+    }
+
+    if (human.Role() == HumanRole::Engineer) {
+        if (Distance(human.Position(), kSealPanel) <= 5.0f && trueCoreIdentified_ &&
+            tasks_.Complete(TaskId::TraceShadow)) {
+            sealDeviceStarted_ = true;
+            toast_ = "工程师启动封印装置";
+        } else if (Distance(human.Position(), kRepairPanel) <= 3.0f) {
+            gateOpen_ = true;
+            toast_ = "工程师打开了机关门";
+        } else if (Distance(human.Position(), kFrontGatePanel) <= 4.0f &&
+                   tasks_.Complete(TaskId::RepairGate) && LampLitInRoom(5)) {
+            guardedGateOpen_ = true;
+            toast_ = "护光开门完成，封印大厅入口开启";
+        } else if (Distance(human.Position(), kTracePanel) <= 4.0f && routeObserved_) {
+            routeOpened_ = true;
+            toast_ = "工程师根据影迹打开了正确路线";
+        } else {
+            toast_ = "附近没有可操作的维修面板，或前置条件未完成";
+        }
+        return;
+    }
+
+    if (human.Role() == HumanRole::Observer) {
+        observerRevealTimer_ = kShadowRevealDuration;
+        const int room = RoomIndex(human.Position());
+        if (room == 2 && LampLitInRoom(2)) {
+            lampCalibrated_ = true;
+            toast_ = "观测员识别正确灯柱，灯源校准完成";
+        } else if (room == 3 || room == 4 || Distance(human.Position(), kTracePanel) <= 4.0f) {
+            routeObserved_ = true;
+            toast_ = "观测员标记了影迹方向";
+        } else if (room == 5) {
+            trueCoreIdentified_ = true;
+            toast_ = "观测员识别了真实核心";
+        } else {
+            toast_ = "影迹观测开启：短时间显示影的位置";
+        }
+        return;
+    }
+}
+
+void Game::HandleShadowAction() {
+    if (shadow_.IsStunned()) {
+        toast_ = "影被眩晕，暂时无法破坏灯源";
+        return;
+    }
+    if (LightSource* lamp = NearestLamp(shadow_.Position())) {
+        if (lamp->TryDamage(shadow_.Position())) {
+            toast_ = "影破坏了已点亮灯源";
+        } else if (lamp->IsDamaged()) {
+            toast_ = "该灯源已经损坏";
+        } else {
+            toast_ = "影只能破坏已点亮灯源";
+        }
+        return;
+    }
+    toast_ = "影附近没有可破坏的灯源";
 }
 
 void Game::RescueNearby(int activeHuman) {
@@ -515,7 +662,7 @@ void Game::ResolveAssimilation() {
         if (human.IsAssimilated()) {
             continue;
         }
-        if (Distance(human.Position(), shadow_.Position()) <= 1.5f) {
+        if (!shadow_.IsStunned() && Distance(human.Position(), shadow_.Position()) <= 1.5f) {
             human.SetChanneling(false);
             human.AddAssimilation((shadowLit || shadow_.WeakTurns() > 0) ? -10 : 15);
         } else if (LitByAnyLight(human.Position())) {
@@ -550,17 +697,18 @@ void Game::PushShadowFromLight() {
 }
 
 char Game::ObjectiveMarker(GridPos p) const {
-    if (!tasks_.Complete(TaskId::ThreeLights)) {
-        if (p.x == RoomCenter(0).x && p.y == RoomCenter(0).y - 2) return 'A';
-        if (p.x == RoomCenter(1).x && p.y == RoomCenter(1).y - 2) return 'B';
+    if (!tasks_.Complete(TaskId::RekindleLamp)) {
+        if (p.x == RoomCenter(0).x && p.y == RoomCenter(0).y - 2) return 'L';
+    } else if (!tasks_.Complete(TaskId::RepairGate)) {
+        if (p.x == kRepairPanel.x && p.y == kRepairPanel.y) return 'G';
+    } else if (!tasks_.Complete(TaskId::GuardedGate)) {
+        if (p.x == kFrontGatePanel.x && p.y == kFrontGatePanel.y) return 'D';
+    } else if (!tasks_.Complete(TaskId::CalibrateLamps)) {
         if (p.x == RoomCenter(2).x && p.y == RoomCenter(2).y - 2) return 'C';
-    } else if (!tasks_.Complete(TaskId::DualGate)) {
-        if (p.x == RoomCenter(3).x && p.y == RoomCenter(3).y - 2) return 'D';
-        if (p.x == RoomCenter(2).x && p.y == RoomCenter(2).y - 2) return 'M';
-    } else if (!tasks_.Complete(TaskId::CoreEscort)) {
-        if (p.x == RoomCenter(5).x && p.y == RoomCenter(5).y) return 'O';
+    } else if (!tasks_.Complete(TaskId::TraceShadow)) {
+        if (p.x == kTracePanel.x && p.y == kTracePanel.y) return 'T';
     } else if (!tasks_.Complete(TaskId::FinalPurification)) {
-        if (p.x == RoomCenter(5).x && p.y == RoomCenter(5).y) return 'P';
+        if (p.x == kFinalCore.x && p.y == kFinalCore.y) return 'P';
     }
     return '\0';
 }
@@ -581,10 +729,10 @@ void Game::DrawObjectiveMarkers() const {
 }
 
 void Game::DrawCore() const {
-    if (tasks_.Complete(TaskId::CoreEscort)) {
+    if (tasks_.Complete(TaskId::FinalPurification)) {
         return;
     }
-    const Vector2 center = ToScreen(corePos_);
+    const Vector2 center = ToScreen(kFinalCore);
     DrawCircleV(center, 9, Color{255, 244, 148, 255});
     DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y), 15, Color{255, 245, 180, 220});
 }
@@ -611,9 +759,11 @@ void Game::DrawSelectionRing() const {
 void Game::DrawPanel() const {
     DrawRectangle(kPanelX, 78, 300, 622, Color{26, 28, 38, 255});
     DrawRectangleLines(kPanelX, 78, 300, 622, Color{75, 78, 96, 255});
-    DrawTextCN(TextFormat("当前人类：%d", selectedHuman_ + 1), kPanelX + 18, 96, 18, Color{230, 224, 190, 255});
-    DrawTextCN(TextFormat("影所在：%s%s", RoomName(RoomIndex(shadow_.Position())).c_str(),
-                          shadow_.WeakTurns() > 0 ? "（虚弱）" : ""),
+    const HumanPlayer& selected = humans_[static_cast<std::size_t>(selectedHuman_)];
+    DrawTextCN(TextFormat("当前人类：%s", selected.RoleName()), kPanelX + 18, 96, 18, Color{230, 224, 190, 255});
+    const bool revealShadow = observerRevealTimer_ > 0.0f || shadowVision_;
+    DrawTextCN(TextFormat("影所在：%s%s", revealShadow ? RoomName(RoomIndex(shadow_.Position())).c_str() : "未知",
+                          shadow_.IsStunned() ? "（眩晕）" : (shadow_.WeakTurns() > 0 ? "（虚弱）" : "")),
                kPanelX + 18, 122, 15, Color{210, 194, 238, 255});
     const char* mode = "本地演示";
     if (entryMode_ == EntryMode::LightTeam) {
@@ -626,7 +776,7 @@ void Game::DrawPanel() const {
     int y = 184;
     for (std::size_t i = 0; i < humans_.size(); ++i) {
         const auto& h = humans_[i];
-        DrawTextCN(h.Label(), kPanelX + 18, y, 16, RAYWHITE);
+        DrawTextCN(TextFormat("%s：%s", h.Label().c_str(), h.RoleName()), kPanelX + 18, y, 15, RAYWHITE);
         DrawRectangle(kPanelX + 18, y + 20, 170, 12, Color{48, 48, 58, 255});
         DrawRectangle(kPanelX + 18, y + 20, static_cast<int>(170.0f * h.Assimilation() / 100.0f), 12,
                       StageColor(h.Assimilation()));
@@ -637,16 +787,21 @@ void Game::DrawPanel() const {
 
     y += 10;
     DrawTextCN("任务", kPanelX + 18, y, 18, Color{238, 226, 180, 255});
-    y += 30;
+    y += 28;
     for (const auto& task : tasks_.Tasks()) {
         DrawTextCN(task.Complete() ? "[x]" : "[ ]", kPanelX + 18, y, 15,
                    task.Complete() ? Color{106, 206, 140, 255} : Color{210, 210, 210, 255});
         DrawTextCN(task.Name(), kPanelX + 50, y, 15, RAYWHITE);
-        DrawTextCN(task.Objective(), kPanelX + 50, y + 18, 13, Color{198, 202, 216, 255});
-        y += 52;
+        DrawTextCN(task.Objective(), kPanelX + 50, y + 17, 12, Color{198, 202, 216, 255});
+        y += 43;
     }
 
-    DrawTextCN("目标：完成净化或阻止净化", kPanelX + 18, 664, 14, Color{190, 194, 208, 255});
+    const char* lampState = "未点亮";
+    if (const LightSource* lamp = NearestLamp(selected.Position())) {
+        lampState = lamp->StateName();
+    }
+    DrawTextCN(TextFormat("附近灯源：%s", lampState), kPanelX + 18, 644, 13, Color{190, 194, 208, 255});
+    DrawTextCN("目标：完成最终净化", kPanelX + 18, 668, 13, Color{190, 194, 208, 255});
 }
 
 void Game::DrawMainMenu() {

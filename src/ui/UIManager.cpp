@@ -46,14 +46,14 @@ void UIManager::DrawHelpPanel() const {
 
     const std::vector<std::string> lines = {
         "入口界面      选择模式、确认准备、进入对局",
-        "Q / E         切换当前人类角色",
+        "Tab / C       切换当前人类角色",
         "W A S D       移动当前人类",
-        "H             靠近灯源时点亮灯源",
-        "J             在当前任务点进行协作",
-        "K             拾取或交付光核",
-        "L             救援并净化附近队友",
+        "E             基础交互：点亮、修复、救援",
+        "Q             职业技能：眩晕、维修面板、影迹观测",
+        "L             单独执行救援",
         "方向键        控制影穿墙移动",
-        "1 - 6         让影传送到指定房间，支持小键盘",
+        "1 - 6         影传送到指定房间，支持小键盘",
+        "R             影破坏附近已点亮灯源",
         "V             切换人类有限视野 / 影全图视野",
         "Esc           游戏中暂停 / 从帮助返回"};
 
@@ -83,7 +83,7 @@ void UIManager::DrawResultPanel(const std::string& result,
     DrawRectangleRoundedLines({kScreenW / 2.0f - 310, 132, 620, 468}, 0.05f, 10, BorderColor());
     DrawTextCN(result, kScreenW / 2 - MeasureTextCN(result, 28) / 2, 178, 28,
                Color{246, 232, 180, 255});
-    DrawTextCN(TextFormat("完成任务：%d / 4", completedTasks), kScreenW / 2 - 190, 252, 22, RAYWHITE);
+    DrawTextCN(TextFormat("完成任务：%d / 6", completedTasks), kScreenW / 2 - 190, 252, 22, RAYWHITE);
     DrawTextCN(TextFormat("被同化人类：%d / 3", assimilatedHumans), kScreenW / 2 - 190, 300, 22, RAYWHITE);
     DrawTextCN("可重新开始、重新选择阵营或返回主菜单。", kScreenW / 2 - 265, 370, 18,
                Color{180, 184, 198, 255});
