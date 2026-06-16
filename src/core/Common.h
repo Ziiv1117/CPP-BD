@@ -31,3 +31,6 @@ GridPos RoomCenter(int room);
 std::string RoomName(int index);
 Color StageColor(int assimilation);
 std::string AssimilationStage(int assimilation, bool assimilated);
+void SetRenderScale(float scale);
+float RenderScale();
+Vector2 LogicalMousePosition();

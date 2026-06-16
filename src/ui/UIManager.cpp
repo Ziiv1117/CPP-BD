@@ -15,7 +15,7 @@ Color BorderColor() {
 }  // namespace
 
 bool UIManager::DrawButton(Rectangle rect, const std::string& text) const {
-    const Vector2 mouse = GetMousePosition();
+    const Vector2 mouse = LogicalMousePosition();
     const bool hovered = CheckCollisionPointRec(mouse, rect);
     const Color fill = hovered ? Color{78, 88, 118, 255} : Color{44, 48, 68, 255};
     const Color border = hovered ? Color{238, 220, 148, 255} : BorderColor();

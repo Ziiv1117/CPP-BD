@@ -1,30 +1,48 @@
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Emsdk = "C:\Users\15963\Desktop\emsdk"
-$RaylibRoot = "C:\Users\15963\Desktop\raylib-5.5-web"
+$ToolsRoot = "C:\Users\Lenovo\Documents\dev-tools"
+$Emsdk = if ($env:EMSDK) {
+    $env:EMSDK
+} else {
+    Join-Path $ToolsRoot "emsdk"
+}
+$RaylibRoot = if ($env:RAYLIB_WEB_ROOT) {
+    $env:RAYLIB_WEB_ROOT
+} else {
+    Join-Path $ToolsRoot "raylib-web-src-5.5"
+}
 $WebDir = Join-Path $Root "web"
 $Output = Join-Path $WebDir "index.html"
 $Emcc = Join-Path $Emsdk "upstream\emscripten\emcc.exe"
 $RaylibLib = Join-Path $RaylibRoot "src\libraylib.a"
 
 if (!(Test-Path $Emcc)) {
-    throw "Emscripten not found at $Emcc"
+    throw "Emscripten not found at $Emcc. Install emsdk at $Emsdk or set EMSDK."
 }
 if (!(Test-Path $RaylibLib)) {
-    throw "Raylib web library not found at $RaylibLib"
+    throw "Raylib web library not found at $RaylibLib. Build raylib for web or set RAYLIB_WEB_ROOT."
 }
 $FontDir = Join-Path $Root "assets\fonts"
-if (!(Test-Path (Join-Path $FontDir "NotoSansSC-VF.ttf"))) {
-    throw "Missing web font: assets\fonts\NotoSansSC-VF.ttf"
+if (!(Test-Path (Join-Path $FontDir "LXGWWenKai-Regular.ttf"))) {
+    throw "Missing web font: assets\fonts\LXGWWenKai-Regular.ttf"
 }
 
 New-Item -ItemType Directory -Force -Path $WebDir | Out-Null
 
 $env:EMSDK = $Emsdk.Replace("\", "/")
-$env:EMSDK_NODE = Join-Path $Emsdk "node\22.16.0_64bit\bin\node.exe"
-$env:EMSDK_PYTHON = Join-Path $Emsdk "python\3.13.3_64bit\python.exe"
-$env:PATH = "$Emsdk;$($Emsdk)\upstream\emscripten;$($Emsdk)\node\22.16.0_64bit\bin;$env:PATH"
+$NodeDir = Get-ChildItem -Path (Join-Path $Emsdk "node") -Directory -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+$PythonDir = Get-ChildItem -Path (Join-Path $Emsdk "python") -Directory -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if ($NodeDir) {
+    $env:EMSDK_NODE = Join-Path $NodeDir.FullName "bin\node.exe"
+    $env:PATH = "$($NodeDir.FullName)\bin;$env:PATH"
+}
+if ($PythonDir) {
+    $env:EMSDK_PYTHON = Join-Path $PythonDir.FullName "python.exe"
+}
+$env:PATH = "$Emsdk;$($Emsdk)\upstream\emscripten;$env:PATH"
 
 $Sources = Get-ChildItem -Path (Join-Path $Root "src") -Recurse -Filter *.cpp |
     ForEach-Object { $_.FullName }
@@ -43,5 +61,9 @@ $PreloadFonts = ($FontDir.Replace("\", "/")) + "@/assets/fonts"
     -s FORCE_FILESYSTEM=1 `
     --preload-file $PreloadFonts `
     --shell-file (Join-Path $WebDir "shell.html")
+
+if ($LASTEXITCODE -ne 0) {
+    throw "emcc failed with exit code $LASTEXITCODE"
+}
 
 Write-Host "Built $Output"

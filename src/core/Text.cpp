@@ -1,13 +1,24 @@
 #include "core/Text.h"
 
+#include "core/Common.h"
+
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <string>
 #include <vector>
 
 namespace {
 
-Font gChineseFont{};
+struct FontEntry {
+    int logicalSize = 0;
+    int atlasSize = 0;
+    Font font{};
+};
+
+std::vector<int> gCodepoints;
+std::vector<FontEntry> gFonts;
+std::string gFontPath;
 bool gFontReady = false;
 
 void AddUtf8Codepoints(const std::string& text, std::set<int>& codepoints) {
@@ -70,11 +81,41 @@ std::vector<int> BuildCodepoints() {
     return {codepoints.begin(), codepoints.end()};
 }
 
+Font* LoadFontForSize(int fontSize) {
+    if (!gFontReady) {
+        return nullptr;
+    }
+
+    const int size = std::max(8, fontSize);
+    const int atlasSize = std::max(8, static_cast<int>(std::ceil(fontSize * RenderScale())));
+    for (FontEntry& entry : gFonts) {
+        if (entry.logicalSize == size && entry.atlasSize == atlasSize) {
+            return &entry.font;
+        }
+    }
+
+    Font font = LoadFontEx(gFontPath.c_str(), atlasSize, const_cast<int*>(gCodepoints.data()),
+                           static_cast<int>(gCodepoints.size()));
+    if (font.texture.id == 0) {
+        return nullptr;
+    }
+
+    SetTextureFilter(font.texture, TEXTURE_FILTER_BILINEAR);
+    gFonts.push_back(FontEntry{size, atlasSize, font});
+    return &gFonts.back().font;
+}
+
 }  // namespace
 
 void InitChineseText() {
-    const std::vector<int> codepoints = BuildCodepoints();
+    gCodepoints = BuildCodepoints();
     const char* candidates[] = {
+        "/assets/fonts/LXGWWenKai-Regular.ttf",
+        "assets/fonts/LXGWWenKai-Regular.ttf",
+        "/assets/fonts/GameChinese.ttf",
+        "assets/fonts/GameChinese.ttf",
+        "/assets/fonts/GameChinese.ttc",
+        "assets/fonts/GameChinese.ttc",
         "/assets/fonts/NotoSansSC-VF.ttf",
         "assets/fonts/NotoSansSC-VF.ttf",
         "C:/Windows/Fonts/NotoSansSC-VF.ttf",
@@ -84,27 +125,36 @@ void InitChineseText() {
 
     for (const char* path : candidates) {
         if (FileExists(path)) {
-            gChineseFont = LoadFontEx(path, 72, const_cast<int*>(codepoints.data()),
-                                      static_cast<int>(codepoints.size()));
-            if (gChineseFont.texture.id != 0) {
-                SetTextureFilter(gChineseFont.texture, TEXTURE_FILTER_POINT);
-                gFontReady = true;
+            gFontPath = path;
+            gFontReady = true;
+            const int preloadSizes[] = {12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28, 40, 52};
+            for (int size : preloadSizes) {
+                LoadFontForSize(size);
+            }
+            if (!gFonts.empty()) {
                 return;
             }
+            gFontReady = false;
+            gFontPath.clear();
         }
     }
 }
 
 void UnloadChineseText() {
     if (gFontReady) {
-        UnloadFont(gChineseFont);
+        for (FontEntry& entry : gFonts) {
+            UnloadFont(entry.font);
+        }
+        gFonts.clear();
+        gCodepoints.clear();
+        gFontPath.clear();
         gFontReady = false;
     }
 }
 
 void DrawTextCN(const char* text, int x, int y, int fontSize, Color color) {
-    if (gFontReady) {
-        DrawTextEx(gChineseFont, text, {static_cast<float>(x), static_cast<float>(y)},
+    if (Font* font = LoadFontForSize(fontSize)) {
+        DrawTextEx(*font, text, {static_cast<float>(x), static_cast<float>(y)},
                    static_cast<float>(fontSize), 1.0f, color);
     } else {
         DrawText(text, x, y, fontSize, color);
@@ -116,8 +166,8 @@ void DrawTextCN(const std::string& text, int x, int y, int fontSize, Color color
 }
 
 int MeasureTextCN(const char* text, int fontSize) {
-    if (gFontReady) {
-        return static_cast<int>(MeasureTextEx(gChineseFont, text, static_cast<float>(fontSize), 1.0f).x);
+    if (Font* font = LoadFontForSize(fontSize)) {
+        return static_cast<int>(MeasureTextEx(*font, text, static_cast<float>(fontSize), 1.0f).x);
     }
     return MeasureText(text, fontSize);
 }

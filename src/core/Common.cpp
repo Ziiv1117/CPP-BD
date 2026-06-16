@@ -4,6 +4,12 @@
 #include <array>
 #include <cmath>
 
+namespace {
+
+float gRenderScale = 1.0f;
+
+}  // namespace
+
 int ClampInt(int value, int low, int high) {
     return std::max(low, std::min(high, value));
 }
@@ -68,4 +74,18 @@ std::string AssimilationStage(int assimilation, bool assimilated) {
         return "受蚀";
     }
     return "正常";
+}
+void SetRenderScale(float scale) {
+    gRenderScale = std::max(1.0f, scale);
+}
+
+float RenderScale() {
+    return gRenderScale;
+}
+
+Vector2 LogicalMousePosition() {
+    Vector2 mouse = GetMousePosition();
+    mouse.x /= gRenderScale;
+    mouse.y /= gRenderScale;
+    return mouse;
 }
