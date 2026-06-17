@@ -28,6 +28,7 @@ if (!(Test-Path $RaylibLib)) {
     throw "Raylib web library not found at $RaylibLib. Build raylib for web or set RAYLIB_WEB_ROOT."
 }
 $FontDir = Join-Path $Root "assets\fonts"
+$MapTilemapDir = Join-Path $Root "assets\maps\kenney_tiny_dungeon\Tilemap"
 if (!(Test-Path (Join-Path $FontDir "LXGWWenKai-Regular.ttf"))) {
     throw "Missing web font: assets\fonts\LXGWWenKai-Regular.ttf"
 }
@@ -51,6 +52,7 @@ $env:PATH = "$Emsdk;$($Emsdk)\upstream\emscripten;$env:PATH"
 $Sources = Get-ChildItem -Path (Join-Path $Root "src") -Recurse -Filter *.cpp |
     ForEach-Object { $_.FullName }
 $PreloadFonts = ($FontDir.Replace("\", "/")) + "@/assets/fonts"
+$PreloadMapTilemap = ($MapTilemapDir.Replace("\", "/")) + "@/assets/maps/kenney_tiny_dungeon/Tilemap"
 
 & $Emcc -std=c++17 -Wall -Wextra -pedantic -DPLATFORM_WEB @Sources `
     -o $Output `
@@ -64,6 +66,7 @@ $PreloadFonts = ($FontDir.Replace("\", "/")) + "@/assets/fonts"
     -s NO_EXIT_RUNTIME=1 `
     -s FORCE_FILESYSTEM=1 `
     --preload-file $PreloadFonts `
+    --preload-file $PreloadMapTilemap `
     --shell-file (Join-Path $WebDir "shell.html")
 
 if ($LASTEXITCODE -ne 0) {
